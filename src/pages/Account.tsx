@@ -1,0 +1,1 @@
+import { Link } from "react-router-dom"; export default function Account(){return <section className="container py-20"><h1 className="font-display text-5xl">My Account</h1><p className="mt-5 text-stone-500">Connect Supabase Auth to enable customer accounts.</p><Link className="btn btn-dark mt-6" to="/shop">Continue shopping</Link></section>}
