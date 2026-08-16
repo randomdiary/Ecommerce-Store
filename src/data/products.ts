@@ -1,10 +1,30 @@
+import { supabase } from "../lib/supabase";
 import type { Product } from "../types";
 
-export const products: Product[] = [
-  { id:"1", name:"Aurora Pearl Earrings", slug:"aurora-pearl-earrings", description:"Elegant pearl-inspired earrings designed for everyday luxury.", price:2499, sale_price:1999, image:"https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=900&q=80", category:"Earrings", stock_quantity:12, is_featured:true },
-  { id:"2", name:"Noir Gold Ring", slug:"noir-gold-ring", description:"Minimal statement ring with a refined gold finish.", price:2999, image:"https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=900&q=80", category:"Rings", stock_quantity:8, is_new:true },
-  { id:"3", name:"Luna Pendant", slug:"luna-pendant", description:"A delicate pendant made for timeless styling.", price:3499, sale_price:2999, image:"https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=900&q=80", category:"Necklaces", stock_quantity:10, is_featured:true },
-  { id:"4", name:"Élan Bracelet", slug:"elan-bracelet", description:"Clean lines and understated elegance.", price:2799, image:"https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=900&q=80", category:"Bracelets", stock_quantity:15 },
-  { id:"5", name:"Celeste Jewelry Set", slug:"celeste-jewelry-set", description:"A coordinated set for celebrations and special moments.", price:4999, sale_price:4299, image:"https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80", category:"Jewelry Sets", stock_quantity:6, is_featured:true },
-  { id:"6", name:"Pearl Halo Ring", slug:"pearl-halo-ring", description:"Soft pearl detailing with a polished finish.", price:3199, image:"https://images.unsplash.com/photo-1603561596112-db4c7a9b9f36?auto=format&fit=crop&w=900&q=80", category:"Rings", stock_quantity:9 }
-];
+export async function getProducts(): Promise<Product[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("*, categories(name), product_images(url,is_primary)")
+    .eq("is_active", true);
+
+  if (error || !data) return [];
+
+  return data.map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description ?? "",
+    price: Number(p.price),
+    sale_price: p.sale_price == null ? null : Number(p.sale_price),
+    image:
+      p.product_images?.find((x: any) => x.is_primary)?.url ??
+      p.product_images?.[0]?.url ??
+      "",
+    category: p.categories?.name ?? "Jewelry",
+    stock_quantity: p.stock_quantity ?? 0,
+    is_featured: p.is_featured ?? false,
+    is_new: p.is_new ?? false,
+  }));
+}
