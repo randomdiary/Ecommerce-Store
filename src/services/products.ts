@@ -7,16 +7,13 @@ export async function getProducts(): Promise<Product[]> {
     .select(`
       id,
       name,
-      slug,
       description,
+      category,
       price,
       sale_price,
       image_url,
-      images,
-      category,
       stock,
-      is_featured,
-      is_new
+      is_featured
     `)
     .eq("is_active", true)
     .order("created_at", { ascending: false });
@@ -26,22 +23,18 @@ export async function getProducts(): Promise<Product[]> {
     return [];
   }
 
-  return (data ?? []).map((p: any) => ({
+  return (data ?? []).map((p) => ({
     id: p.id,
     name: p.name,
-    slug: p.slug,
+    slug: p.id,
     description: p.description ?? "",
     price: Number(p.price),
     sale_price:
       p.sale_price == null ? null : Number(p.sale_price),
-    image:
-      p.image_url ||
-      (Array.isArray(p.images) && p.images.length > 0
-        ? p.images[0]
-        : ""),
+    image: p.image_url ?? "",
     category: p.category ?? "Jewelry",
     stock_quantity: Number(p.stock ?? 0),
     is_featured: Boolean(p.is_featured),
-    is_new: Boolean(p.is_new),
+    is_new: false,
   }));
 }
