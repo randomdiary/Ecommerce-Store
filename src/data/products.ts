@@ -1,20 +1,7 @@
-import { supabase } from "./supabase";
+import { supabase } from "../lib/supabase";
+import type { Product } from "../types";
 
-export type StoreProduct = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  price: number;
-  sale_price: number | null;
-  image: string;
-  category: string;
-  stock: number;
-  is_featured: boolean;
-  is_new: boolean;
-};
-
-export async function fetchProducts(): Promise<StoreProduct[]> {
+export async function getProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from("products")
     .select(`
@@ -36,24 +23,26 @@ export async function fetchProducts(): Promise<StoreProduct[]> {
 
   if (error) {
     console.error("Products fetch error:", error);
-    throw error;
+    return [];
   }
 
-  return (data ?? []).map((product) => ({
+  return (data ?? []).map((product: any) => ({
     id: product.id,
     name: product.name,
     slug: product.slug,
     description: product.description ?? "",
     price: Number(product.price),
     sale_price:
-      product.sale_price === null
+      product.sale_price == null
         ? null
         : Number(product.sale_price),
     image:
       product.image_url ||
-      (product.images?.length ? product.images[0] : ""),
+      (Array.isArray(product.images) && product.images.length > 0
+        ? product.images[0]
+        : ""),
     category: product.category ?? "Jewelry",
-    stock: Number(product.stock ?? 0),
+    stock_quantity: Number(product.stock ?? 0),
     is_featured: Boolean(product.is_featured),
     is_new: Boolean(product.is_new),
   }));
