@@ -7,6 +7,10 @@ export default function Checkout() {
   const total = useCart((s) => s.total);
   const clear = useCart((s) => s.clear);
 
+  const subtotal = total();
+  const deliveryCharge: number = 250;
+  const orderTotal = subtotal + deliveryCharge;
+
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [orderId, setOrderId] = useState("");
@@ -46,10 +50,7 @@ export default function Checkout() {
     setSaving(true);
 
     try {
-      const subtotal = total();
-      const deliveryCharge = 0;
-      const orderTotal = subtotal + deliveryCharge;
-
+      
       // 1. Create order
       const { data: order, error: orderError } = await supabase
         .from("orders")
@@ -294,16 +295,16 @@ export default function Checkout() {
         ? "To be calculated"
         : `Rs. ${deliveryCharge.toLocaleString()}`}
     </span>
-  </div>
+    </div>
 
-  <div className="border-t pt-3 flex justify-between">
-    <span className="font-semibold">Total</span>
+         <div className="border-t pt-3 flex justify-between">
+         <span className="font-semibold">Total</span>
 
-    <strong className="text-xl">
-      Rs. {orderTotal.toLocaleString()}
-    </strong>
-  </div>
-</div>
+         <strong className="text-xl">
+            Rs. {orderTotal.toLocaleString()}
+         </strong>
+        </div>
+       </div>
 
             <button
               type="submit"
