@@ -22,6 +22,31 @@ type Product = {
   is_featured: boolean;
 };
 
+type Order = {
+  id: string;
+  customer_name: string;
+  customer_email: string | null;
+  customer_phone: string;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+  address: string;
+  payment_method: string;
+  subtotal: number;
+  total: number;
+  status: string;
+  created_at: string;
+};
+
+type OrderItem = {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  product_name: string;
+  product_price: number;
+  quantity: number;
+};
+
 const emptyForm = {
   name: "",
   description: "",
@@ -39,11 +64,25 @@ const emptyForm = {
 export default function Dashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [showForm, setShowForm] = useState(false);
+  const [showOrders, setShowOrders] = useState(true);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  const [selectedOrder, setSelectedOrder] =
+    useState<Order | null>(null);
+
+  // ============================================================
+  // LOAD PRODUCTS + CATEGORIES
+  // ============================================================
 
   const loadData = async () => {
     setLoading(true);
@@ -73,15 +112,62 @@ export default function Dashboard() {
     if (categoriesResult.error) {
       console.error("Categories error:", categoriesResult.error);
     } else {
-      setCategories((categoriesResult.data || []) as Category[]);
+      setCategories(
+        (categoriesResult.data || []) as Category[]
+      );
     }
 
     setLoading(false);
   };
 
+  // ============================================================
+  // LOAD ORDERS
+  // ============================================================
+
+  const loadOrders = async () => {
+    setOrdersLoading(true);
+
+    const { data: ordersData, error: ordersError } =
+      await supabase
+        .from("orders")
+        .select(
+          "id,customer_name,customer_email,customer_phone,city,province,postal_code,address,payment_method,subtotal,total,status,created_at"
+        )
+        .order("created_at", { ascending: false });
+
+    if (ordersError) {
+      console.error("Orders error:", ordersError);
+      alert(ordersError.message);
+      setOrdersLoading(false);
+      return;
+    }
+
+    const { data: itemsData, error: itemsError } =
+      await supabase
+        .from("order_items")
+        .select(
+          "id,order_id,product_id,product_name,product_price,quantity"
+        )
+        .order("id");
+
+    if (itemsError) {
+      console.error("Order items error:", itemsError);
+      alert(itemsError.message);
+    }
+
+    setOrders((ordersData || []) as Order[]);
+    setOrderItems((itemsData || []) as OrderItem[]);
+    setOrdersLoading(false);
+  };
+
   useEffect(() => {
     loadData();
+    loadOrders();
   }, []);
+
+  // ============================================================
+  // PRODUCT FORM
+  // ============================================================
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -128,6 +214,10 @@ export default function Dashboard() {
     setEditingId(null);
     setShowForm(false);
   };
+
+  // ============================================================
+  // ADD / UPDATE PRODUCT
+  // ============================================================
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,6 +286,10 @@ export default function Dashboard() {
     await loadData();
   };
 
+  // ============================================================
+  // EDIT PRODUCT
+  // ============================================================
+
   const editProduct = (product: Product) => {
     setEditingId(product.id);
 
@@ -224,6 +318,10 @@ export default function Dashboard() {
     });
   };
 
+  // ============================================================
+  // DELETE PRODUCT
+  // ============================================================
+
   const deleteProduct = async (id: string) => {
     const confirmed = window.confirm(
       "Are you sure you want to delete this product?"
@@ -245,6 +343,91 @@ export default function Dashboard() {
     await loadData();
   };
 
+  // ============================================================
+  // UPDATE ORDER STATUS
+  // ============================================================
+
+  const updateOrderStatus = async (
+    orderId: string,
+    status: string
+  ) => {
+    const { error } = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("Order status error:", error);
+      alert(error.message);
+      return;
+    }
+
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.id === orderId
+          ? { ...order, status }
+          : order
+      )
+    );
+
+    if (selectedOrder?.id === orderId) {
+      setSelectedOrder({
+        ...selectedOrder,
+        status,
+      });
+    }
+
+    alert("Order status updated.");
+  };
+
+  // ============================================================
+  // DELETE ORDER
+  // ============================================================
+
+  const deleteOrder = async (orderId: string) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this order?"
+    );
+
+    if (!confirmed) return;
+
+    const { error: itemsError } = await supabase
+      .from("order_items")
+      .delete()
+      .eq("order_id", orderId);
+
+    if (itemsError) {
+      alert(itemsError.message);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("orders")
+      .delete()
+      .eq("id", orderId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setOrders((prev) =>
+      prev.filter((order) => order.id !== orderId)
+    );
+
+    setOrderItems((prev) =>
+      prev.filter((item) => item.order_id !== orderId)
+    );
+
+    setSelectedOrder(null);
+
+    alert("Order deleted successfully.");
+  };
+
+  // ============================================================
+  // STATS
+  // ============================================================
+
   const activeProducts = products.filter(
     (product) => product.is_active
   ).length;
@@ -253,8 +436,45 @@ export default function Dashboard() {
     (product) => product.is_featured
   ).length;
 
+  const pendingOrders = orders.filter(
+    (order) => order.status === "pending"
+  ).length;
+
+  const confirmedOrders = orders.filter(
+    (order) => order.status === "confirmed"
+  ).length;
+
+  const deliveredOrders = orders.filter(
+    (order) => order.status === "delivered"
+  ).length;
+
+  const totalSales = orders
+    .filter((order) => order.status !== "cancelled")
+    .reduce(
+      (sum, order) => sum + Number(order.total || 0),
+      0
+    );
+
+  const getOrderItems = (orderId: string) => {
+    return orderItems.filter(
+      (item) => item.order_id === orderId
+    );
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleString("en-PK", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
+
+      {/* ========================================================
+          HEADER
+      ======================================================== */}
+
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">
@@ -262,72 +482,611 @@ export default function Dashboard() {
           </h1>
 
           <p className="mt-1 text-gray-500">
-            Manage your jewellery products, prices and stock.
+            Manage your jewellery, products and customer orders.
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            resetForm();
-            setShowForm(true);
-          }}
-          className="rounded-xl bg-black px-6 py-3 font-semibold text-white hover:bg-gray-800"
-        >
-          + Add Product
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => {
+              setShowOrders(!showOrders);
+
+              if (!showOrders) {
+                loadOrders();
+              }
+            }}
+            className="rounded-xl border bg-white px-6 py-3 font-semibold"
+          >
+            📦 Orders ({orders.length})
+          </button>
+
+          <button
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+            className="rounded-xl bg-black px-6 py-3 font-semibold text-white hover:bg-gray-800"
+          >
+            + Add Product
+          </button>
+        </div>
       </div>
 
+      {/* ========================================================
+          STATISTICS
+      ======================================================== */}
+
       <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+
         <div className="rounded-2xl bg-white p-6 shadow-sm">
-          <p className="text-sm text-gray-500">Total Products</p>
+          <p className="text-sm text-gray-500">
+            Total Products
+          </p>
+
           <h2 className="mt-2 text-3xl font-bold">
             {products.length}
           </h2>
         </div>
 
         <div className="rounded-2xl bg-white p-6 shadow-sm">
-          <p className="text-sm text-gray-500">Active Products</p>
+          <p className="text-sm text-gray-500">
+            Total Orders
+          </p>
+
           <h2 className="mt-2 text-3xl font-bold">
-            {activeProducts}
+            {orders.length}
           </h2>
         </div>
 
         <div className="rounded-2xl bg-white p-6 shadow-sm">
           <p className="text-sm text-gray-500">
-            Featured Products
+            Pending Orders
           </p>
+
           <h2 className="mt-2 text-3xl font-bold">
-            {featuredProducts}
+            {pendingOrders}
           </h2>
         </div>
 
         <div className="rounded-2xl bg-white p-6 shadow-sm">
-          <p className="text-sm text-gray-500">Categories</p>
+          <p className="text-sm text-gray-500">
+            Total Sales
+          </p>
+
           <h2 className="mt-2 text-3xl font-bold">
-            {categories.length}
+            Rs. {totalSales.toLocaleString()}
           </h2>
         </div>
       </div>
 
+      {/* ========================================================
+          ORDER STATUS STATS
+      ======================================================== */}
+
+      <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <p className="text-sm text-gray-500">
+            Confirmed Orders
+          </p>
+
+          <p className="mt-2 text-2xl font-bold">
+            {confirmedOrders}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <p className="text-sm text-gray-500">
+            Delivered Orders
+          </p>
+
+          <p className="mt-2 text-2xl font-bold">
+            {deliveredOrders}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <p className="text-sm text-gray-500">
+            Categories
+          </p>
+
+          <p className="mt-2 text-2xl font-bold">
+            {categories.length}
+          </p>
+        </div>
+
+      </div>
+
+      {/* ========================================================
+          ORDERS SECTION
+      ======================================================== */}
+
+      {showOrders && (
+        <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+
+            <div>
+              <h2 className="text-2xl font-bold">
+                Customer Orders
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Orders placed from your website.
+              </p>
+            </div>
+
+            <button
+              onClick={loadOrders}
+              className="rounded-xl border px-5 py-2 font-medium hover:bg-gray-50"
+            >
+              🔄 Refresh Orders
+            </button>
+
+          </div>
+
+          {ordersLoading ? (
+            <p className="py-10 text-center text-gray-500">
+              Loading orders...
+            </p>
+          ) : orders.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-gray-500">
+                No orders yet.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+
+              {orders.map((order) => {
+                const items = getOrderItems(order.id);
+
+                return (
+                  <div
+                    key={order.id}
+                    className="rounded-2xl border p-5"
+                  >
+
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+
+                      {/* CUSTOMER */}
+
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
+
+                          <h3 className="text-lg font-bold">
+                            {order.customer_name}
+                          </h3>
+
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              order.status === "pending"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : order.status === "confirmed"
+                                ? "bg-blue-100 text-blue-700"
+                                : order.status === "shipped"
+                                ? "bg-purple-100 text-purple-700"
+                                : order.status === "delivered"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {order.status.toUpperCase()}
+                          </span>
+
+                        </div>
+
+                        <p className="mt-1 text-sm text-gray-500">
+                          Order ID: {order.id}
+                        </p>
+
+                        <p className="mt-1 text-sm text-gray-500">
+                          {formatDate(order.created_at)}
+                        </p>
+                      </div>
+
+                      {/* TOTAL */}
+
+                      <div className="text-left lg:text-right">
+                        <p className="text-sm text-gray-500">
+                          Order Total
+                        </p>
+
+                        <p className="text-xl font-bold">
+                          Rs.{" "}
+                          {Number(
+                            order.total
+                          ).toLocaleString()}
+                        </p>
+                      </div>
+
+                    </div>
+
+                    <div className="my-5 border-t" />
+
+                    {/* CUSTOMER DETAILS */}
+
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+                      <div>
+                        <p className="text-xs text-gray-400">
+                          Phone
+                        </p>
+
+                        <p className="font-medium">
+                          {order.customer_phone}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-400">
+                          Email
+                        </p>
+
+                        <p className="font-medium">
+                          {order.customer_email || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-400">
+                          City
+                        </p>
+
+                        <p className="font-medium">
+                          {order.city || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-400">
+                          Payment
+                        </p>
+
+                        <p className="font-medium">
+                          {order.payment_method}
+                        </p>
+                      </div>
+
+                    </div>
+
+                    {/* ADDRESS */}
+
+                    <div className="mt-4 rounded-xl bg-gray-50 p-4">
+
+                      <p className="text-xs text-gray-400">
+                        Delivery Address
+                      </p>
+
+                      <p className="mt-1 font-medium">
+                        {order.address}
+                        {order.city
+                          ? `, ${order.city}`
+                          : ""}
+                        {order.province
+                          ? `, ${order.province}`
+                          : ""}
+                        {order.postal_code
+                          ? ` - ${order.postal_code}`
+                          : ""}
+                      </p>
+
+                    </div>
+
+                    {/* ITEMS */}
+
+                    <div className="mt-4">
+
+                      <p className="mb-2 font-semibold">
+                        Products
+                      </p>
+
+                      <div className="space-y-2">
+
+                        {items.length === 0 ? (
+                          <p className="text-sm text-gray-500">
+                            No order items found.
+                          </p>
+                        ) : (
+                          items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex justify-between rounded-xl bg-gray-50 px-4 py-3"
+                            >
+
+                              <span>
+                                {item.product_name} ×{" "}
+                                {item.quantity}
+                              </span>
+
+                              <span className="font-semibold">
+                                Rs.{" "}
+                                {(
+                                  Number(
+                                    item.product_price
+                                  ) *
+                                  item.quantity
+                                ).toLocaleString()}
+                              </span>
+
+                            </div>
+                          ))
+                        )}
+
+                      </div>
+                    </div>
+
+                    {/* ACTIONS */}
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+
+                      <select
+                        value={order.status}
+                        onChange={(e) =>
+                          updateOrderStatus(
+                            order.id,
+                            e.target.value
+                          )
+                        }
+                        className="rounded-xl border bg-white px-4 py-2"
+                      >
+                        <option value="pending">
+                          Pending
+                        </option>
+
+                        <option value="confirmed">
+                          Confirmed
+                        </option>
+
+                        <option value="shipped">
+                          Shipped
+                        </option>
+
+                        <option value="delivered">
+                          Delivered
+                        </option>
+
+                        <option value="cancelled">
+                          Cancelled
+                        </option>
+                      </select>
+
+                      <button
+                        onClick={() =>
+                          setSelectedOrder(order)
+                        }
+                        className="rounded-xl border px-4 py-2"
+                      >
+                        View Details
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          deleteOrder(order.id)
+                        }
+                        className="rounded-xl bg-red-500 px-4 py-2 text-white"
+                      >
+                        Delete
+                      </button>
+
+                    </div>
+
+                  </div>
+                );
+              })}
+
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ========================================================
+          ORDER DETAILS MODAL
+      ======================================================== */}
+
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6">
+
+            <div className="flex items-center justify-between">
+
+              <h2 className="text-2xl font-bold">
+                Order Details
+              </h2>
+
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="text-2xl text-gray-500"
+              >
+                ✕
+              </button>
+
+            </div>
+
+            <div className="mt-6 space-y-4">
+
+              <div>
+                <p className="text-xs text-gray-400">
+                  Customer
+                </p>
+
+                <p className="font-semibold">
+                  {selectedOrder.customer_name}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400">
+                  Phone
+                </p>
+
+                <p>
+                  {selectedOrder.customer_phone}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400">
+                  Email
+                </p>
+
+                <p>
+                  {selectedOrder.customer_email || "—"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400">
+                  Address
+                </p>
+
+                <p>
+                  {selectedOrder.address}
+                  {selectedOrder.city
+                    ? `, ${selectedOrder.city}`
+                    : ""}
+                  {selectedOrder.province
+                    ? `, ${selectedOrder.province}`
+                    : ""}
+                  {selectedOrder.postal_code
+                    ? ` - ${selectedOrder.postal_code}`
+                    : ""}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400">
+                  Payment Method
+                </p>
+
+                <p className="font-medium">
+                  {selectedOrder.payment_method}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400">
+                  Status
+                </p>
+
+                <select
+                  value={selectedOrder.status}
+                  onChange={(e) =>
+                    updateOrderStatus(
+                      selectedOrder.id,
+                      e.target.value
+                    )
+                  }
+                  className="mt-1 rounded-xl border px-4 py-2"
+                >
+                  <option value="pending">
+                    Pending
+                  </option>
+
+                  <option value="confirmed">
+                    Confirmed
+                  </option>
+
+                  <option value="shipped">
+                    Shipped
+                  </option>
+
+                  <option value="delivered">
+                    Delivered
+                  </option>
+
+                  <option value="cancelled">
+                    Cancelled
+                  </option>
+                </select>
+              </div>
+
+              <div className="border-t pt-4">
+
+                <h3 className="font-semibold">
+                  Ordered Products
+                </h3>
+
+                <div className="mt-3 space-y-2">
+
+                  {getOrderItems(
+                    selectedOrder.id
+                  ).map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex justify-between rounded-xl bg-gray-50 p-3"
+                    >
+                      <span>
+                        {item.product_name} ×{" "}
+                        {item.quantity}
+                      </span>
+
+                      <strong>
+                        Rs.{" "}
+                        {(
+                          Number(
+                            item.product_price
+                          ) * item.quantity
+                        ).toLocaleString()}
+                      </strong>
+                    </div>
+                  ))}
+
+                </div>
+
+              </div>
+
+              <div className="flex justify-between border-t pt-4 text-lg">
+
+                <span>Total</span>
+
+                <strong>
+                  Rs.{" "}
+                  {Number(
+                    selectedOrder.total
+                  ).toLocaleString()}
+                </strong>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* ========================================================
+          PRODUCT FORM
+      ======================================================== */}
+
       {showForm && (
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+
           <div className="mb-6 flex items-center justify-between">
+
             <h2 className="text-2xl font-bold">
-              {editingId ? "Edit Product" : "Add New Product"}
+              {editingId
+                ? "Edit Product"
+                : "Add New Product"}
             </h2>
 
             <button
               onClick={resetForm}
-              className="text-xl text-gray-500 hover:text-black"
+              className="text-xl text-gray-500"
             >
               ✕
             </button>
+
           </div>
 
           <form
             onSubmit={handleSubmit}
             className="grid grid-cols-1 gap-5 md:grid-cols-2"
           >
+
             <div>
               <label className="mb-2 block font-medium">
                 Product Name *
@@ -367,7 +1126,6 @@ export default function Dashboard() {
                 name="price"
                 value={form.price}
                 onChange={handleChange}
-                placeholder="2500"
                 min="0"
                 className="w-full rounded-xl border px-4 py-3"
                 required
@@ -384,7 +1142,6 @@ export default function Dashboard() {
                 name="sale_price"
                 value={form.sale_price}
                 onChange={handleChange}
-                placeholder="1999"
                 min="0"
                 className="w-full rounded-xl border px-4 py-3"
               />
@@ -419,7 +1176,9 @@ export default function Dashboard() {
                 onChange={handleCategoryChange}
                 className="w-full rounded-xl border bg-white px-4 py-3"
               >
-                <option value="">Select category</option>
+                <option value="">
+                  Select category
+                </option>
 
                 {categories.map((category) => (
                   <option
@@ -433,6 +1192,7 @@ export default function Dashboard() {
             </div>
 
             <div className="md:col-span-2">
+
               <label className="mb-2 block font-medium">
                 Product Image URL
               </label>
@@ -444,9 +1204,11 @@ export default function Dashboard() {
                 placeholder="https://..."
                 className="w-full rounded-xl border px-4 py-3"
               />
+
             </div>
 
             <div className="md:col-span-2">
+
               <label className="mb-2 block font-medium">
                 Description
               </label>
@@ -459,10 +1221,13 @@ export default function Dashboard() {
                 placeholder="Describe your jewellery..."
                 className="w-full rounded-xl border px-4 py-3"
               />
+
             </div>
 
             <div className="flex flex-col gap-5 md:col-span-2 md:flex-row">
+
               <label className="flex items-center gap-3">
+
                 <input
                   type="checkbox"
                   name="is_active"
@@ -471,10 +1236,14 @@ export default function Dashboard() {
                   className="h-5 w-5"
                 />
 
-                <span>Active — show on website</span>
+                <span>
+                  Active — show on website
+                </span>
+
               </label>
 
               <label className="flex items-center gap-3">
+
                 <input
                   type="checkbox"
                   name="is_featured"
@@ -483,11 +1252,16 @@ export default function Dashboard() {
                   className="h-5 w-5"
                 />
 
-                <span>Featured Product</span>
+                <span>
+                  Featured Product
+                </span>
+
               </label>
+
             </div>
 
             <div className="flex gap-3 pt-3 md:col-span-2">
+
               <button
                 type="submit"
                 disabled={saving}
@@ -507,19 +1281,37 @@ export default function Dashboard() {
               >
                 Cancel
               </button>
+
             </div>
+
           </form>
         </div>
       )}
 
-      <div className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Products</h2>
+      {/* ========================================================
+          PRODUCTS
+      ======================================================== */}
 
-          <span className="text-gray-500">
-            {products.length} product
-            {products.length !== 1 ? "s" : ""}
-          </span>
+      <div className="rounded-2xl bg-white p-6 shadow-sm">
+
+        <div className="mb-6 flex items-center justify-between">
+
+          <div>
+            <h2 className="text-2xl font-bold">
+              Products
+            </h2>
+
+            <p className="text-sm text-gray-500">
+              {products.length} product
+              {products.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+
+          <div className="text-sm text-gray-500">
+            Active: {activeProducts} · Featured:{" "}
+            {featuredProducts}
+          </div>
+
         </div>
 
         {loading ? (
@@ -528,6 +1320,7 @@ export default function Dashboard() {
           </p>
         ) : products.length === 0 ? (
           <div className="py-12 text-center">
+
             <p className="mb-4 text-gray-500">
               No products added yet.
             </p>
@@ -538,29 +1331,55 @@ export default function Dashboard() {
             >
               + Add Your First Product
             </button>
+
           </div>
         ) : (
           <div className="overflow-x-auto">
+
             <table className="w-full text-left">
+
               <thead>
                 <tr className="border-b">
-                  <th className="px-3 py-4">Product</th>
-                  <th className="px-3 py-4">Category</th>
-                  <th className="px-3 py-4">Price</th>
-                  <th className="px-3 py-4">Stock</th>
-                  <th className="px-3 py-4">Status</th>
-                  <th className="px-3 py-4">Actions</th>
+
+                  <th className="px-3 py-4">
+                    Product
+                  </th>
+
+                  <th className="px-3 py-4">
+                    Category
+                  </th>
+
+                  <th className="px-3 py-4">
+                    Price
+                  </th>
+
+                  <th className="px-3 py-4">
+                    Stock
+                  </th>
+
+                  <th className="px-3 py-4">
+                    Status
+                  </th>
+
+                  <th className="px-3 py-4">
+                    Actions
+                  </th>
+
                 </tr>
               </thead>
 
               <tbody>
+
                 {products.map((product) => (
                   <tr
                     key={product.id}
                     className="border-b last:border-b-0"
                   >
+
                     <td className="px-3 py-4">
+
                       <div className="flex items-center gap-3">
+
                         {product.image_url ? (
                           <img
                             src={product.image_url}
@@ -574,6 +1393,7 @@ export default function Dashboard() {
                         )}
 
                         <div>
+
                           <p className="font-semibold">
                             {product.name}
                           </p>
@@ -583,8 +1403,11 @@ export default function Dashboard() {
                               SKU: {product.sku}
                             </p>
                           )}
+
                         </div>
+
                       </div>
+
                     </td>
 
                     <td className="px-3 py-4">
@@ -592,6 +1415,7 @@ export default function Dashboard() {
                     </td>
 
                     <td className="px-3 py-4">
+
                       {product.sale_price ? (
                         <>
                           <span className="font-semibold">
@@ -610,6 +1434,7 @@ export default function Dashboard() {
                           {product.price.toLocaleString()}
                         </span>
                       )}
+
                     </td>
 
                     <td className="px-3 py-4">
@@ -617,7 +1442,9 @@ export default function Dashboard() {
                     </td>
 
                     <td className="px-3 py-4">
+
                       <div className="flex flex-col gap-1">
+
                         <span
                           className={
                             product.is_active
@@ -635,11 +1462,15 @@ export default function Dashboard() {
                             ⭐ Featured
                           </span>
                         )}
+
                       </div>
+
                     </td>
 
                     <td className="px-3 py-4">
+
                       <div className="flex gap-2">
+
                         <button
                           onClick={() =>
                             editProduct(product)
@@ -657,15 +1488,23 @@ export default function Dashboard() {
                         >
                           Delete
                         </button>
+
                       </div>
+
                     </td>
+
                   </tr>
                 ))}
+
               </tbody>
+
             </table>
+
           </div>
         )}
+
       </div>
+
     </div>
   );
 }

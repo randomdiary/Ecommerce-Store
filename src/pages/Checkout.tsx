@@ -8,8 +8,8 @@ export default function Checkout() {
   const clear = useCart((s) => s.clear);
 
   const [done, setDone] = useState(false);
-  const [orderNumber, setOrderNumber] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [orderId, setOrderId] = useState("");
 
   const [form, setForm] = useState({
     fullName: "",
@@ -35,9 +35,7 @@ export default function Checkout() {
     }));
   };
 
-  const placeOrder = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!items.length) {
@@ -45,7 +43,7 @@ export default function Checkout() {
       return;
     }
 
-    setLoading(true);
+    setSaving(true);
 
     try {
       const orderTotal = total();
@@ -54,85 +52,69 @@ export default function Checkout() {
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
-          customer_name: form.fullName,
-          email: form.email || null,
-          phone: form.phone,
-          shipping_address: form.address,
-          city: form.city,
-          province: form.province || null,
-          postal_code: form.postalCode || null,
-          subtotal: orderTotal,
-          shipping_fee: 0,
-          discount: 0,
-          total: orderTotal,
+          customer_name: form.fullName.trim(),
+          customer_email: form.email.trim() || null,
+          customer_phone: form.phone.trim(),
+          city: form.city.trim() || null,
+          province: form.province.trim() || null,
+          postal_code: form.postalCode.trim() || null,
+          address: form.address.trim(),
           payment_method: form.paymentMethod,
+          subtotal: orderTotal,
+          total: orderTotal,
           status: "pending",
         })
-        .select("id, order_number")
+        .select("id")
         .single();
 
       if (orderError) {
         console.error("Order creation error:", orderError);
-        alert(`Order could not be placed: ${orderError.message}`);
+        alert(orderError.message);
         return;
       }
 
-      // 2. Create order items
-      const orderItems = items.map((item: any) => {
-        const price = Number(
-          item.sale_price ?? item.price
-        );
+      if (!order) {
+        alert("Order could not be created.");
+        return;
+      }
 
-        const quantity = Number(
-          item.quantity ?? 1
-        );
-
-        return {
-          order_id: order.id,
-          product_id: item.id,
-          product_name: item.name,
-          quantity,
-          unit_price: price,
-          total_price: price * quantity,
-        };
-      });
+      // 2. Save order items
+      const orderItems = items.map((item) => ({
+        order_id: order.id,
+        product_id: item.id,
+        product_name: item.name,
+        product_price: item.sale_price ?? item.price,
+        quantity: item.quantity,
+      }));
 
       const { error: itemsError } = await supabase
         .from("order_items")
         .insert(orderItems);
 
       if (itemsError) {
-        console.error(
-          "Order items error:",
-          itemsError
-        );
+        console.error("Order items error:", itemsError);
 
-        // Remove incomplete order if order items fail
+        // Remove incomplete order
         await supabase
           .from("orders")
           .delete()
           .eq("id", order.id);
 
-        alert(
-          `Order items could not be saved: ${itemsError.message}`
-        );
-
+        alert(itemsError.message);
         return;
       }
 
-      // 3. Clear cart only after everything succeeds
+      // 3. Clear cart
       clear();
 
-      setOrderNumber(order.order_number);
+      // 4. Show success
+      setOrderId(order.id);
       setDone(true);
     } catch (error) {
-      console.error("Unexpected checkout error:", error);
-
-      alert(
-        "Something went wrong while placing your order. Please try again."
-      );
+      console.error("Checkout error:", error);
+      alert("Something went wrong while placing your order.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -147,20 +129,17 @@ export default function Checkout() {
           Thank you for shopping with M.S Collection.
         </p>
 
-        {orderNumber && (
-          <div className="mx-auto mt-8 max-w-md rounded-2xl bg-stone-100 p-6">
-            <p className="text-sm text-stone-500">
-              Your Order Number
-            </p>
+        <p className="mt-3 text-sm text-stone-500">
+          Your order has been successfully placed.
+        </p>
 
-            <p className="mt-2 text-2xl font-semibold">
-              {orderNumber}
-            </p>
-
-            <p className="mt-4 text-sm text-stone-500">
-              Please keep this order number for your records.
-            </p>
-          </div>
+        {orderId && (
+          <p className="mt-4 text-sm">
+            Order ID:{" "}
+            <span className="font-semibold">
+              {orderId}
+            </span>
+          </p>
         )}
       </section>
     );
@@ -179,7 +158,7 @@ export default function Checkout() {
       ) : (
         <form
           className="mt-10 grid gap-10 md:grid-cols-[1fr_360px]"
-          onSubmit={placeOrder}
+          onSubmit={handleSubmit}
         >
           <div className="card p-6">
             <h2 className="font-display text-2xl">
@@ -206,12 +185,13 @@ export default function Checkout() {
               />
 
               <input
+                type="tel"
                 name="phone"
                 value={form.phone}
                 onChange={handleChange}
                 required
                 className="input"
-                placeholder="Phone"
+                placeholder="Phone number"
               />
 
               <input
@@ -246,7 +226,7 @@ export default function Checkout() {
                 required
                 className="input md:col-span-2"
                 rows={4}
-                placeholder="Complete address"
+                placeholder="Complete delivery address"
               />
 
               <select
@@ -255,15 +235,15 @@ export default function Checkout() {
                 onChange={handleChange}
                 className="input md:col-span-2"
               >
-                <option>
+                <option value="Cash on Delivery">
                   Cash on Delivery
                 </option>
 
-                <option>
+                <option value="Bank Transfer">
                   Bank Transfer
                 </option>
 
-                <option>
+                <option value="Easypaisa / JazzCash">
                   Easypaisa / JazzCash
                 </option>
               </select>
@@ -272,21 +252,46 @@ export default function Checkout() {
 
           <aside className="card h-fit p-6">
             <h2 className="font-display text-2xl">
-              Order total
+              Order summary
             </h2>
 
-            <p className="mt-5 text-2xl font-semibold">
-              Rs. {total().toLocaleString()}
-            </p>
+            <div className="mt-5 space-y-3">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex justify-between gap-4 text-sm"
+                >
+                  <span>
+                    {item.name} × {item.quantity}
+                  </span>
+
+                  <span className="font-medium">
+                    Rs.{" "}
+                    {(
+                      (item.sale_price ?? item.price) *
+                      item.quantity
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="my-5 border-t" />
+
+            <div className="flex justify-between">
+              <span>Total</span>
+
+              <strong className="text-xl">
+                Rs. {total().toLocaleString()}
+              </strong>
+            </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={saving}
               className="btn btn-dark mt-6 w-full disabled:opacity-50"
             >
-              {loading
-                ? "Placing order..."
-                : "Place order"}
+              {saving ? "Placing order..." : "Place order"}
             </button>
           </aside>
         </form>
