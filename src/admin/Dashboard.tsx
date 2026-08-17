@@ -20,12 +20,12 @@ type Product = {
   sku: string | null;
   is_active: boolean;
   is_featured: boolean;
+  is_new: boolean;
 };
 
 const emptyForm = {
   name: "",
   description: "",
-  category: "",
   category_id: "",
   price: "",
   sale_price: "",
@@ -34,6 +34,7 @@ const emptyForm = {
   sku: "",
   is_active: true,
   is_featured: false,
+  is_new: false,
 };
 
 export default function Dashboard() {
@@ -43,7 +44,6 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
   const [form, setForm] = useState(emptyForm);
 
   const loadData = async () => {
@@ -53,7 +53,7 @@ export default function Dashboard() {
       supabase
         .from("products")
         .select(
-          "id,name,description,category,category_id,price,sale_price,image_url,stock,sku,is_active,is_featured"
+          "id,name,description,category,category_id,price,sale_price,image_url,stock,sku,is_active,is_featured,is_new"
         )
         .order("created_at", { ascending: false }),
 
@@ -65,16 +65,16 @@ export default function Dashboard() {
     ]);
 
     if (productsResult.error) {
-      console.error("Products error:", productsResult.error);
+      console.error(productsResult.error);
       alert(productsResult.error.message);
     } else {
-      setProducts((productsResult.data || []) as Product[]);
+      setProducts((productsResult.data ?? []) as Product[]);
     }
 
     if (categoriesResult.error) {
-      console.error("Categories error:", categoriesResult.error);
+      console.error(categoriesResult.error);
     } else {
-      setCategories((categoriesResult.data || []) as Category[]);
+      setCategories((categoriesResult.data ?? []) as Category[]);
     }
 
     setLoading(false);
@@ -92,36 +92,16 @@ export default function Dashboard() {
     const { name, value, type } = e.target;
 
     if (type === "checkbox") {
-      const checked = (e.target as HTMLInputElement).checked;
-
       setForm((prev) => ({
         ...prev,
-        [name]: checked,
+        [name]: (e.target as HTMLInputElement).checked,
       }));
-
-      return;
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
     }
-
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleCategoryChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const categoryId = e.target.value;
-
-    const selectedCategory = categories.find(
-      (category) => category.id === categoryId
-    );
-
-    setForm((prev) => ({
-      ...prev,
-      category_id: categoryId,
-      category: selectedCategory?.name || "",
-    }));
   };
 
   const resetForm = () => {
@@ -145,21 +125,41 @@ export default function Dashboard() {
 
     setSaving(true);
 
+    const selectedCategory = categories.find(
+      (category) => category.id === form.category_id
+    );
+
     const productData = {
       name: form.name.trim(),
+      slug:
+        form.name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "") +
+        (editingId ? "" : `-${Date.now()}`),
+
       description: form.description.trim() || null,
-      category: form.category || null,
+
       category_id: form.category_id || null,
+      category: selectedCategory?.name || null,
+
       price: Number(form.price),
+
       sale_price:
         form.sale_price && Number(form.sale_price) > 0
           ? Number(form.sale_price)
           : null,
+
       image_url: form.image_url.trim() || null,
+
       stock: Number(form.stock) || 0,
+
       sku: form.sku.trim() || null,
+
       is_active: form.is_active,
       is_featured: form.is_featured,
+      is_new: form.is_new,
     };
 
     let error = null;
@@ -203,7 +203,6 @@ export default function Dashboard() {
     setForm({
       name: product.name || "",
       description: product.description || "",
-      category: product.category || "",
       category_id: product.category_id || "",
       price: String(product.price ?? ""),
       sale_price:
@@ -215,6 +214,7 @@ export default function Dashboard() {
       sku: product.sku || "",
       is_active: product.is_active,
       is_featured: product.is_featured,
+      is_new: product.is_new,
     });
 
     setShowForm(true);
@@ -227,7 +227,7 @@ export default function Dashboard() {
 
   const deleteProduct = async (id: string) => {
     const confirmed = window.confirm(
-      "Are you sure you want to delete this product?"
+      "Are you sure you want to permanently delete this product?"
     );
 
     if (!confirmed) return;
@@ -238,6 +238,7 @@ export default function Dashboard() {
       .eq("id", id);
 
     if (error) {
+      console.error(error);
       alert(error.message);
       return;
     }
@@ -246,17 +247,8 @@ export default function Dashboard() {
     await loadData();
   };
 
-  const activeProducts = products.filter(
-    (product) => product.is_active
-  ).length;
-
-  const featuredProducts = products.filter(
-    (product) => product.is_featured
-  ).length;
-
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold">
@@ -264,7 +256,7 @@ export default function Dashboard() {
           </h1>
 
           <p className="text-gray-500 mt-1">
-            Manage your jewellery products, prices and stock.
+            Manage products, prices and stock.
           </p>
         </div>
 
@@ -273,52 +265,35 @@ export default function Dashboard() {
             resetForm();
             setShowForm(true);
           }}
-          className="bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800"
+          className="bg-black text-white px-6 py-3 rounded-xl font-semibold"
         >
           + Add Product
         </button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500 text-sm">
-            Total Products
-          </p>
-          <h2 className="text-3xl font-bold mt-2">
+          <p className="text-gray-500">Total Products</p>
+          <p className="text-3xl font-bold mt-2">
             {products.length}
-          </h2>
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500 text-sm">
-            Active Products
+          <p className="text-gray-500">Active Products</p>
+          <p className="text-3xl font-bold mt-2">
+            {products.filter((p) => p.is_active).length}
           </p>
-          <h2 className="text-3xl font-bold mt-2">
-            {activeProducts}
-          </h2>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500 text-sm">
-            Featured Products
+          <p className="text-gray-500">Featured Products</p>
+          <p className="text-3xl font-bold mt-2">
+            {products.filter((p) => p.is_featured).length}
           </p>
-          <h2 className="text-3xl font-bold mt-2">
-            {featuredProducts}
-          </h2>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500 text-sm">
-            Categories
-          </p>
-          <h2 className="text-3xl font-bold mt-2">
-            {categories.length}
-          </h2>
         </div>
       </div>
 
-      {/* Add/Edit Product Form */}
       {showForm && (
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-8">
           <div className="flex justify-between items-center mb-6">
@@ -328,7 +303,7 @@ export default function Dashboard() {
 
             <button
               onClick={resetForm}
-              className="text-gray-500 hover:text-black text-xl"
+              className="text-gray-500 text-xl"
             >
               ✕
             </button>
@@ -338,186 +313,119 @@ export default function Dashboard() {
             onSubmit={handleSubmit}
             className="grid grid-cols-1 md:grid-cols-2 gap-5"
           >
-            {/* Product Name */}
-            <div>
-              <label className="block font-medium mb-2">
-                Product Name *
-              </label>
+            <input
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              placeholder="Product Name"
+              className="border rounded-xl px-4 py-3"
+              required
+            />
 
-              <input
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="e.g. Pearl Drop Earrings"
-                className="w-full border rounded-xl px-4 py-3"
-                required
-              />
-            </div>
+            <input
+              name="sku"
+              value={form.sku}
+              onChange={handleChange}
+              placeholder="SKU"
+              className="border rounded-xl px-4 py-3"
+            />
 
-            {/* SKU */}
-            <div>
-              <label className="block font-medium mb-2">
-                SKU
-              </label>
+            <input
+              type="number"
+              name="price"
+              value={form.price}
+              onChange={handleChange}
+              placeholder="Price (PKR)"
+              className="border rounded-xl px-4 py-3"
+              min="0"
+              required
+            />
 
-              <input
-                name="sku"
-                value={form.sku}
-                onChange={handleChange}
-                placeholder="e.g. MS-EAR-001"
-                className="w-full border rounded-xl px-4 py-3"
-              />
-            </div>
+            <input
+              type="number"
+              name="sale_price"
+              value={form.sale_price}
+              onChange={handleChange}
+              placeholder="Sale Price (PKR)"
+              className="border rounded-xl px-4 py-3"
+              min="0"
+            />
 
-            {/* Price */}
-            <div>
-              <label className="block font-medium mb-2">
-                Price (PKR) *
-              </label>
+            <input
+              type="number"
+              name="stock"
+              value={form.stock}
+              onChange={handleChange}
+              placeholder="Stock"
+              className="border rounded-xl px-4 py-3"
+              min="0"
+            />
 
-              <input
-                type="number"
-                name="price"
-                value={form.price}
-                onChange={handleChange}
-                placeholder="2500"
-                min="0"
-                className="w-full border rounded-xl px-4 py-3"
-                required
-              />
-            </div>
+            <select
+              name="category_id"
+              value={form.category_id}
+              onChange={handleChange}
+              className="border rounded-xl px-4 py-3 bg-white"
+            >
+              <option value="">Select category</option>
 
-            {/* Sale Price */}
-            <div>
-              <label className="block font-medium mb-2">
-                Sale Price (PKR)
-              </label>
-
-              <input
-                type="number"
-                name="sale_price"
-                value={form.sale_price}
-                onChange={handleChange}
-                placeholder="1999"
-                min="0"
-                className="w-full border rounded-xl px-4 py-3"
-              />
-
-              <p className="text-xs text-gray-500 mt-1">
-                Leave empty if there is no sale.
-              </p>
-            </div>
-
-            {/* Stock */}
-            <div>
-              <label className="block font-medium mb-2">
-                Stock
-              </label>
-
-              <input
-                type="number"
-                name="stock"
-                value={form.stock}
-                onChange={handleChange}
-                min="0"
-                className="w-full border rounded-xl px-4 py-3"
-              />
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block font-medium mb-2">
-                Category
-              </label>
-
-              <select
-                value={form.category_id}
-                onChange={handleCategoryChange}
-                className="w-full border rounded-xl px-4 py-3 bg-white"
-              >
-                <option value="">
-                  Select category
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
                 </option>
+              ))}
+            </select>
 
-                {categories.map((category) => (
-                  <option
-                    key={category.id}
-                    value={category.id}
-                  >
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <input
+              name="image_url"
+              value={form.image_url}
+              onChange={handleChange}
+              placeholder="Product Image URL"
+              className="border rounded-xl px-4 py-3 md:col-span-2"
+            />
 
-            {/* Image URL */}
-            <div className="md:col-span-2">
-              <label className="block font-medium mb-2">
-                Product Image URL
-              </label>
+            <textarea
+              name="description"
+              value={form.description}
+              onChange={handleChange}
+              placeholder="Product Description"
+              rows={4}
+              className="border rounded-xl px-4 py-3 md:col-span-2"
+            />
 
-              <input
-                name="image_url"
-                value={form.image_url}
-                onChange={handleChange}
-                placeholder="https://..."
-                className="w-full border rounded-xl px-4 py-3"
-              />
-
-              <p className="text-xs text-gray-500 mt-1">
-                We will add direct image uploading later.
-              </p>
-            </div>
-
-            {/* Description */}
-            <div className="md:col-span-2">
-              <label className="block font-medium mb-2">
-                Description
-              </label>
-
-              <textarea
-                name="description"
-                value={form.description}
-                onChange={handleChange}
-                rows={4}
-                placeholder="Describe your jewellery..."
-                className="w-full border rounded-xl px-4 py-3"
-              />
-            </div>
-
-            {/* Checkboxes */}
-            <div className="md:col-span-2 flex flex-col md:flex-row gap-5">
-              <label className="flex items-center gap-3">
+            <div className="flex gap-6 md:col-span-2">
+              <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   name="is_active"
                   checked={form.is_active}
                   onChange={handleChange}
-                  className="w-5 h-5"
                 />
-
-                <span>
-                  Active — show on website
-                </span>
+                Active
               </label>
 
-              <label className="flex items-center gap-3">
+              <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   name="is_featured"
                   checked={form.is_featured}
                   onChange={handleChange}
-                  className="w-5 h-5"
                 />
+                Featured
+              </label>
 
-                <span>
-                  Featured Product
-                </span>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="is_new"
+                  checked={form.is_new}
+                  onChange={handleChange}
+                />
+                New
               </label>
             </div>
 
-            {/* Buttons */}
-            <div className="md:col-span-2 flex gap-3 pt-3">
+            <div className="flex gap-3 md:col-span-2">
               <button
                 type="submit"
                 disabled={saving}
@@ -533,7 +441,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={resetForm}
-                className="border px-7 py-3 rounded-xl font-semibold"
+                className="border px-7 py-3 rounded-xl"
               >
                 Cancel
               </button>
@@ -542,182 +450,22 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Products */}
       <div className="bg-white rounded-2xl shadow-sm p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">
-            Products
-          </h2>
-
-          <span className="text-gray-500">
-            {products.length} product
-            {products.length !== 1 ? "s" : ""}
-          </span>
-        </div>
+        <h2 className="text-2xl font-bold mb-6">
+          Products
+        </h2>
 
         {loading ? (
-          <p className="text-gray-500">
-            Loading products...
-          </p>
+          <p>Loading products...</p>
         ) : products.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500 mb-4">
-              No products added yet.
-            </p>
-
-            <button
-              onClick={() => setShowForm(true)}
-              className="bg-black text-white px-6 py-3 rounded-xl"
-            >
-              + Add Your First Product
-            </button>
-          </div>
+          <p className="text-gray-500">
+            No products added yet.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b">
-                  <th className="py-4 px-3">
-                    Product
-                  </th>
-
-                  <th className="py-4 px-3">
-                    Category
-                  </th>
-
-                  <th className="py-4 px-3">
-                    Price
-                  </th>
-
-                  <th className="py-4 px-3">
-                    Stock
-                  </th>
-
-                  <th className="py-4 px-3">
-                    Status
-                  </th>
-
-                  <th className="py-4 px-3">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {products.map((product) => (
-                  <tr
-                    key={product.id}
-                    className="border-b last:border-b-0"
-                  >
-                    <td className="py-4 px-3">
-                      <div className="flex items-center gap-3">
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="w-14 h-14 rounded-xl object-cover"
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center text-xs text-gray-400">
-                            No image
-                          </div>
-                        )}
-
-                        <div>
-                          <p className="font-semibold">
-                            {product.name}
-                          </p>
-
-                          {product.sku && (
-                            <p className="text-xs text-gray-500">
-                              SKU: {product.sku}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-4 px-3">
-                      {product.category || "—"}
-                    </td>
-
-                    <td className="py-4 px-3">
-                      <div>
-                        {product.sale_price ? (
-                          <>
-                            <span className="font-semibold">
-                              Rs.{" "}
-                              {product.sale_price.toLocaleString()}
-                            </span>
-
-                            <span className="block text-sm text-gray-400 line-through">
-                              Rs.{" "}
-                              {product.price.toLocaleString()}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-semibold">
-                            Rs.{" "}
-                            {product.price.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="py-4 px-3">
-                      {product.stock}
-                    </td>
-
-                    <td className="py-4 px-3">
-                      <div className="flex flex-col gap-1">
-                        <span
-                          className={
-                            product.is_active
-                              ? "text-green-600 text-sm"
-                              : "text-red-500 text-sm"
-                          }
-                        >
-                          {product.is_active
-                            ? "Active"
-                            : "Hidden"}
-                        </span>
-
-                        {product.is_featured && (
-                          <span className="text-sm">
-                            ⭐ Featured
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="py-4 px-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            editProduct(product)
-                          }
-                          className="border px-3 py-2 rounded-lg text-sm"
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            deleteProduct(product.id)
-                          }
-                          className="bg-red-500 text-white px-3 py-2 rounded-lg text-sm"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+                  <th className="py-4">Product</th>
+                  <th className="py-4">Price</th>
+                  <th className="py

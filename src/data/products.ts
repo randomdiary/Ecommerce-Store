@@ -1,30 +1,60 @@
-import { supabase } from "../lib/supabase";
-import type { Product } from "../types";
+import { supabase } from "./supabase";
 
-export async function getProducts(): Promise<Product[]> {
-  if (!supabase) return [];
+export type StoreProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  price: number;
+  sale_price: number | null;
+  image: string;
+  category: string;
+  stock: number;
+  is_featured: boolean;
+  is_new: boolean;
+};
 
+export async function fetchProducts(): Promise<StoreProduct[]> {
   const { data, error } = await supabase
     .from("products")
-    .select("*, categories(name), product_images(url,is_primary)")
-    .eq("is_active", true);
+    .select(`
+      id,
+      name,
+      slug,
+      description,
+      price,
+      sale_price,
+      image_url,
+      images,
+      category,
+      stock,
+      is_featured,
+      is_new
+    `)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
 
-  if (error || !data) return [];
+  if (error) {
+    console.error("Products fetch error:", error);
+    throw error;
+  }
 
-  return data.map((p: any) => ({
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    description: p.description ?? "",
-    price: Number(p.price),
-    sale_price: p.sale_price == null ? null : Number(p.sale_price),
+  return (data ?? []).map((product) => ({
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    description: product.description ?? "",
+    price: Number(product.price),
+    sale_price:
+      product.sale_price === null
+        ? null
+        : Number(product.sale_price),
     image:
-      p.product_images?.find((x: any) => x.is_primary)?.url ??
-      p.product_images?.[0]?.url ??
-      "",
-    category: p.categories?.name ?? "Jewelry",
-    stock_quantity: p.stock_quantity ?? 0,
-    is_featured: p.is_featured ?? false,
-    is_new: p.is_new ?? false,
+      product.image_url ||
+      (product.images?.length ? product.images[0] : ""),
+    category: product.category ?? "Jewelry",
+    stock: Number(product.stock ?? 0),
+    is_featured: Boolean(product.is_featured),
+    is_new: Boolean(product.is_new),
   }));
 }
