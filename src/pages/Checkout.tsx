@@ -46,7 +46,9 @@ export default function Checkout() {
     setSaving(true);
 
     try {
-      const orderTotal = total();
+      const subtotal = total();
+      const deliveryCharge = 0;
+      const orderTotal = subtotal + deliveryCharge;
 
       // 1. Create order
       const { data: order, error: orderError } = await supabase
@@ -60,7 +62,8 @@ export default function Checkout() {
           postal_code: form.postalCode.trim() || null,
           address: form.address.trim(),
           payment_method: form.paymentMethod,
-          subtotal: orderTotal,
+          subtotal: subtotal,
+          delivery_charge: deliveryCharge,
           total: orderTotal,
           status: "pending",
         })
@@ -278,13 +281,29 @@ export default function Checkout() {
 
             <div className="my-5 border-t" />
 
-            <div className="flex justify-between">
-              <span>Total</span>
+<div className="space-y-3">
+  <div className="flex justify-between">
+    <span>Subtotal</span>
+    <span>Rs. {subtotal.toLocaleString()}</span>
+  </div>
 
-              <strong className="text-xl">
-                Rs. {total().toLocaleString()}
-              </strong>
-            </div>
+  <div className="flex justify-between">
+    <span>Delivery</span>
+    <span>
+      {deliveryCharge === 0
+        ? "To be calculated"
+        : `Rs. ${deliveryCharge.toLocaleString()}`}
+    </span>
+  </div>
+
+  <div className="border-t pt-3 flex justify-between">
+    <span className="font-semibold">Total</span>
+
+    <strong className="text-xl">
+      Rs. {orderTotal.toLocaleString()}
+    </strong>
+  </div>
+</div>
 
             <button
               type="submit"
