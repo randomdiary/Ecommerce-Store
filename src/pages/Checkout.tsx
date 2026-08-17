@@ -8,7 +8,7 @@ export default function Checkout() {
   const clear = useCart((s) => s.clear);
 
   const subtotal = total();
-  const deliveryCharge: number = 250;
+  const deliveryCharge = 250 as number;
   const orderTotal = subtotal + deliveryCharge;
 
   const [done, setDone] = useState(false);
@@ -291,9 +291,7 @@ export default function Checkout() {
   <div className="flex justify-between">
     <span>Delivery</span>
     <span>
-      {deliveryCharge === 0
-        ? "To be calculated"
-        : `Rs. ${deliveryCharge.toLocaleString()}`}
+      Rs. {deliveryCharge.toLocaleString()}
     </span>
     </div>
 
