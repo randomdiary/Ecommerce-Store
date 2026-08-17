@@ -7,43 +7,38 @@ export async function getProducts(): Promise<Product[]> {
     .select(`
       id,
       name,
-      slug,
       description,
+      category,
       price,
       sale_price,
       image_url,
-      images,
-      category,
       stock,
       is_featured,
-      is_new
+      is_active,
+      created_at
     `)
     .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   if (error) {
     console.error("Products fetch error:", error);
-    return [];
+    throw error;
   }
 
-  return (data ?? []).map((product: any) => ({
+  return (data ?? []).map((product) => ({
     id: product.id,
     name: product.name,
-    slug: product.slug,
+    slug: "",
     description: product.description ?? "",
-    price: Number(product.price),
+    price: Number(product.price ?? 0),
     sale_price:
       product.sale_price == null
         ? null
         : Number(product.sale_price),
-    image:
-      product.image_url ||
-      (Array.isArray(product.images) && product.images.length > 0
-        ? product.images[0]
-        : ""),
+    image: product.image_url ?? "",
     category: product.category ?? "Jewelry",
     stock_quantity: Number(product.stock ?? 0),
     is_featured: Boolean(product.is_featured),
-    is_new: Boolean(product.is_new),
+    is_new: false,
   }));
 }
